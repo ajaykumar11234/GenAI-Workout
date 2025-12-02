@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import time
+import os
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from collections import deque
@@ -9,12 +10,16 @@ import threading
 import random
 import requests
 import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuration for Node.js backend
-NODEJS_BACKEND_URL = "http://localhost:4000/api/v1/user"
+# Configuration for Node.js backend (use environment variable for production)
+NODEJS_BACKEND_URL = os.environ.get('NODEJS_BACKEND_URL', 'http://localhost:4000/api/v1/user')
 
 # -----------------------------
 # Mediapipe setup
@@ -920,4 +925,6 @@ def get_motivation():
     })
 
 if __name__ == "__main__":
-    app.run(debug=True, threaded=True)
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    app.run(host='0.0.0.0', port=port, debug=debug_mode, threaded=True)
