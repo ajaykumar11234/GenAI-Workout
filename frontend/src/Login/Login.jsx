@@ -23,7 +23,7 @@ const LoginModal = ({ closeModal }) => {
       if (response.status === 200) {
         localStorage.setItem('accessToken', response.data.data.accessToken);
         localStorage.setItem('refreshToken', response.data.data.refreshToken);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        localStorage.setItem('userData', JSON.stringify(response.data.data.user));
 
         if (response.data.data.user.role === "user") {
           navigate("/dash");

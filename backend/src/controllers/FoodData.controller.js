@@ -1,5 +1,5 @@
 import { asyncHandler } from "../asyncHandler.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import { promises as fs } from "fs";
 import { ApiError } from "../utils/ApiError.js";
@@ -44,23 +44,33 @@ const generateFoodData = asyncHandler(async (req, res) => {
       },
     ];
 
-    const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-    const generationConfig = {
-      temperature: 0.9,
-      topK: 1,
-      topP: 1,
-      maxOutputTokens: 2048,
-    };
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-002",
-      generationConfig,
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+    // Note: Groq doesn't support vision models yet, so we'll use a text-based approach
+    // The user should provide food description in FoodData
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "user",
+          content: `${FoodData} Analyze this food description and provide the details of each food item and its nutritional information in the following JSON format:
+
+{
+  "items": [
+    { "name": "Item 1", "calories": "calories", "proteins": "proteins" },
+    { "name": "Item 2", "calories": "calories", "proteins": "proteins" }
+  ],
+  "total_calories": "total calories"
+}
+
+Provide realistic estimates based on standard serving sizes.`
+        }
+      ],
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.7,
+      max_tokens: 2048
     });
 
-    const data = await model.generateContent({
-      contents: [{ role: "user", parts }],
-    });
-    const result = await data.response;
-    const text = await result.text(); // Added `await` to handle the async text extraction
+    const text = completion.choices[0]?.message?.content || "";
 
     const jsonMatch = text.match(/\{[\s\S]*\}/); // Matches JSON-like structure
 

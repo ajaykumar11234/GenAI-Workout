@@ -1,6 +1,6 @@
 import React from "react";
 import LandingPage from "./Login/LandingPage";
-import { Routes, Route, BrowserRouter } from "react-router-dom";
+import { Routes, Route, BrowserRouter, useLocation } from "react-router-dom";
 import Dashboard from "./Client/Pages/Dashboard";
 import LoginModal from "./Login/Login";
 import RegisterModal from "./Login/RegisterModal";
@@ -21,16 +21,18 @@ import Footer from "./components/Footer";
 import ForgotPassword from "./Login/ForgotPassword";
 import UserPerformance from "./Client/features/workout/UserPerformance";
 import AdminPortal from "./Admin/components/AdminPortal";
+import FitnessChatbot from "./Client/Pages/FitnessChatbot";
+import NutritionTracker from "./Client/Pages/NutritionTracker";
+import FormAnalysisPage from "./Client/Pages/FormAnalysisPage";
 
-const App = () => {
+const AppContent = () => {
+  const location = useLocation();
+  const hideFooter = location.pathname === '/exerciseTracker' || location.pathname === '/fitness-chatbot';
 
   return (
-    // <LandingPage/>
-    <div>
-      <BrowserRouter>
-      <div className="app-container flex flex-col min-h-screen">
-        {/* Main Content */}
-        <div className="flex-grow">
+    <div className="app-container flex flex-col min-h-screen">
+      {/* Main Content */}
+      <div className="flex-grow">
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/admin/*" element={<AdminPortal/>}/>
@@ -43,6 +45,7 @@ const App = () => {
           <Route path="/home" element={<Home/>}/>
           <Route path="/exerciseTracker" element={<ExerciseTracker/>}/>
           <Route path="/profile" element={<UserProfile/>}/>
+          <Route path="/fitness-chatbot" element={<FitnessChatbot/>}/>
           {/* <Route path="/navbarWorkout" element={<NavbarWorkout/>}/> */}
           {/* <Route path="/joinWorkout" element={<JoinWorkout/>}/> */}
           <Route path="/getWorkoutPlan" element={<WorkoutPage/>}/>
@@ -51,16 +54,27 @@ const App = () => {
           <Route path="/performance" element={<PerformanceModal/>}/>
           <Route path="/forget-password" element={<ForgotPassword/>}/>
           <Route path="/user-performance" element={<UserPerformance/>}/>
+          <Route path="/nutrition" element={<NutritionTracker/>}/>
+          <Route path="/form-analysis" element={<FormAnalysisPage/>}/>
         </Routes>
-              </div>
+      </div>
 
-      {/* Footer */}
-      <Footer />
-      </div>   
-   </BrowserRouter>
-      
+      {/* Footer - Hidden on Exercise Tracker */}
+      {!hideFooter && <Footer />}
     </div>
-    
+  );
+};
+
+const App = () => {
+  return (
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
+      <AppContent />
+    </BrowserRouter>
   );
 };
 

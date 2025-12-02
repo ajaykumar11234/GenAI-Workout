@@ -634,6 +634,86 @@ const deleteUserByAdmin=asyncHandler(async(req,res)=>{
   }
 })
 
+// Get dashboard data with all user statistics
+const getDashboardData = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  try {
+    // Fetch user with populated workouts and diets
+    const user = await User.findById(userId)
+      .select('-password -refreshToken')
+      .populate('workouts')
+      .populate('diets');
+
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    // Fetch performance data
+    const Performance = (await import("../models/Performance.model.js")).Performance;
+    const performanceData = await Performance.findOne({ userId }).select('-userId');
+
+    // Fetch weight logs
+    const WeightLog = (await import("../models/weight.model.js")).WeightLog;
+    const weightLogs = await WeightLog.find({ userId }).sort({ date: -1 }).limit(10);
+
+    // Calculate statistics
+    const stats = {
+      totalWorkouts: user.workouts.length,
+      totalDietPlans: user.diets.length,
+      totalPerformanceEntries: performanceData?.workouts?.length || 0,
+      totalWeightLogs: weightLogs.length,
+      currentWeight: weightLogs.length > 0 ? weightLogs[0].weight : null,
+      weightChange: weightLogs.length >= 2 ? (weightLogs[0].weight - weightLogs[weightLogs.length - 1].weight) : 0,
+    };
+
+    // Get recent workout and diet
+    const recentWorkout = user.workouts.length > 0 ? user.workouts[user.workouts.length - 1] : null;
+    const recentDiet = user.diets.length > 0 ? user.diets[user.diets.length - 1] : null;
+
+    // Calculate total reps from performance data
+    let totalReps = 0;
+    let recentExercise = 'None';
+    
+    if (performanceData?.workouts && performanceData.workouts.length > 0) {
+      const lastWorkout = performanceData.workouts[performanceData.workouts.length - 1];
+      if (lastWorkout.todayExercises && lastWorkout.todayExercises.length > 0) {
+        recentExercise = lastWorkout.todayExercises[0].workoutName;
+      }
+
+      performanceData.workouts.forEach(workout => {
+        workout.todayExercises?.forEach(exercise => {
+          exercise.sets?.forEach(set => {
+            totalReps += set.rep || 0;
+          });
+        });
+      });
+    }
+
+    res.status(200).json(
+      new ApiSuccess(200, {
+        user: {
+          fullName: user.fullName,
+          email: user.email,
+          phone: user.phone,
+          gender: user.gender,
+        },
+        stats,
+        performance: {
+          totalReps,
+          recentExercise,
+          workouts: performanceData?.workouts || []
+        },
+        recentWorkout,
+        recentDiet,
+        weightLogs: weightLogs.slice(0, 5), // Only send last 5 weight logs
+      }, "Dashboard data fetched successfully")
+    );
+  } catch (error) {
+    console.error("Error fetching dashboard data:", error);
+    throw new ApiError(500, "Failed to fetch dashboard data");
+  }
+});
 
 export {
   registerUser,
@@ -647,8 +727,7 @@ export {
   getAllUsers,
   forgotPassword,
   updateUserByAdmin,
-  
   resetPassword,
-  
+  getDashboardData,
   // updateProfilePic,
 };

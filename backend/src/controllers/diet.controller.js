@@ -1,5 +1,5 @@
 import { asyncHandler } from "../asyncHandler.js";
-import { run } from "../geminiAPI.js";
+import { run } from "../groqAPI.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiSuccess } from "../utils/ApiSuccess.js";
 import { Workout } from "../models/workout.model.js";// Import the Workout model
@@ -10,7 +10,7 @@ const generateDietPlan = asyncHandler(async (req, res) => {
     const userId=req.user._id;
     // console.log(req.user._id);
     const prompt = `
-   Generate a diet plan for the below information below:
+   Generate a complete 7-day diet plan (Monday through Sunday - all 7 days are required) for the below information:
     1. User Information:
        - Weight: ${weight} kg
        - Height: ${height} cm
@@ -21,47 +21,71 @@ const generateDietPlan = asyncHandler(async (req, res) => {
        - Description :${message}
 
     2. Diet Plan Requirements:
-   - Provide a structured diet plan with daily meals
-   - Each day's plan should include:
-     - Meals, including:
-       - Meal Type (Breakfast, Lunch, Dinner, Snack)
-       - Food Items, with:
-         - Name of the food item
-         - Quantity (e.g., '1 cup', '200 grams')
-         - Optional: Calories for each food item
+   - MUST provide exactly 7 days: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, and Sunday
+   - Each day MUST include all meals: Breakfast, Lunch, Dinner, and at least one Snack
+   - Provide variety across different days
+   - Stay within the monthly budget of ${monthlyBudget} INR
+   - For each meal, include:
+     - Meal Type (Breakfast, Lunch, Dinner, Snack)
+     - Food Items with:
+       - Name of the food item
+       - Quantity (e.g., '1 cup', '200 grams')
+       - Calories for each food item (as a number)
+   - Return ONLY valid JSON, no additional text or explanations
 
-**Expected JSON Format:**
+**Expected JSON Format (complete all 7 days):**
 {
   "dailyDiet": [
     {
-      "typeOfMeal": "Breakfast",
-      "FoodItems": [
+      "day": "Monday",
+      "meals": [
         {
-          "foodName": "Food item name",
-          "quantity": "quantity (e.g., '1 cup', '200 grams')",
-          "calories": Number
+          "typeOfMeal": "Breakfast",
+          "FoodItems": [
+            {
+              "foodName": "Food item name",
+              "quantity": "quantity (e.g., '1 cup', '200 grams')",
+              "calories": 100
+            }
+          ]
+        },
+        {
+          "typeOfMeal": "Lunch",
+          "FoodItems": [{"foodName": "Food item name", "quantity": "quantity", "calories": 150}]
+        },
+        {
+          "typeOfMeal": "Dinner",
+          "FoodItems": [{"foodName": "Food item name", "quantity": "quantity", "calories": 200}]
+        },
+        {
+          "typeOfMeal": "Snack",
+          "FoodItems": [{"foodName": "Food item name", "quantity": "quantity", "calories": 50}]
         }
       ]
     },
     {
-      "typeOfMeal": "Lunch",
-      "FoodItems": [
-        {
-          "foodName": "Food item name",
-          "quantity": "quantity (e.g., '1 cup', '200 grams')",
-          "calories": Number
-        }
-      ]
+      "day": "Tuesday",
+      "meals": [...]
     },
     {
-      "typeOfMeal": "Dinner",
-      "FoodItems": [
-        {
-          "foodName": "Food item name",
-          "quantity": "quantity (e.g., '1 cup', '200 grams')",
-          "calories": Number
-        }
-      ]
+      "day": "Wednesday",
+      "meals": [...]
+    },
+    {
+      "day": "Thursday",
+      "meals": [...]
+    },
+    {
+      "day": "Friday",
+      "meals": [...]
+    },
+    {
+      "day": "Saturday",
+      "meals": [...]
+    },
+    {
+      "day": "Sunday",
+      "meals": [...]
     }
   ]
 }
@@ -71,22 +95,28 @@ const generateDietPlan = asyncHandler(async (req, res) => {
     if (!answer) {
         throw new ApiError(400, "Unable to generate the workout plan");
     }
-    // console.log("Full response from Gemini API:", answer);
-    const jsonMatch = answer.match(/\{[\s\S]*\}/); 
-
-    if (!jsonMatch) {
-      throw new ApiError(400, "Invalid format returned from the API");
+    
+    console.log("Full response from Groq API:", answer);
+    
+    // Try to extract JSON - first remove markdown code blocks
+    let cleanedAnswer = answer.replace(/```json|```/g, "").trim();
+    
+    // Then try to find JSON object
+    const jsonMatch = cleanedAnswer.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanedAnswer = jsonMatch[0];
     }
 
-    const cleanedAnswer = jsonMatch[0];
+    console.log("Cleaned answer:", cleanedAnswer);
+    
     let dietPlan;
-try {
-    dietPlan = JSON.parse(cleanedAnswer);    
-} catch (error) {
-    throw new ApiError(400, "Invalid format returned from the workout generator");
-}
-
-
+    try {
+        dietPlan = JSON.parse(cleanedAnswer);    
+    } catch (error) {
+        console.error("JSON parse error:", error);
+        console.error("Failed to parse:", cleanedAnswer);
+        throw new ApiError(400, "Invalid format returned from the workout generator");
+    }
     // Create a new Workout document
     const newDietPlan = new Diet({
         user:userId,

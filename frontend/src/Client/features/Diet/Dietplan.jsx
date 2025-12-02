@@ -178,28 +178,62 @@ export default function DietPlan() {
           Diet Plan for {formData.FitnessGoal}
         </h2>
         <div className="space-y-8">
-          {dietPlan.dailyDiet.map((meal, index) => (
-            <div
-              className="bg-gray-700 p-5 rounded-lg shadow-sm"
-              key={index}
-            >
-              <h3 className="text-xl font-semibold text-indigo-400">
-                {meal.typeOfMeal}
-              </h3>
-              <ul className="mt-4 space-y-3">
-                {meal.FoodItems.map((foodItem) => (
-                  <li
-                    key={foodItem._id}
-                    className="flex justify-between items-center text-gray-300"
+          {dietPlan.dailyDiet[0]?.day ? (
+            // New 7-day format
+            dietPlan.dailyDiet.map((dayPlan, dayIndex) => (
+              <div key={dayIndex} className="border-2 border-indigo-500 rounded-lg p-4">
+                <h3 className="text-2xl font-bold text-indigo-400 mb-4">
+                  {dayPlan.day}
+                </h3>
+                {dayPlan.meals.map((meal, mealIndex) => (
+                  <div
+                    className="bg-gray-700 p-5 rounded-lg shadow-sm mb-4"
+                    key={mealIndex}
                   >
-                    <span className="font-medium">{foodItem.foodName}</span>
-                    <span>{foodItem.quantity}</span>
-                    <span>{foodItem.calories} Calories</span>
-                  </li>
+                    <h4 className="text-xl font-semibold text-indigo-300">
+                      {meal.typeOfMeal}
+                    </h4>
+                    <ul className="mt-4 space-y-3">
+                      {meal.FoodItems.map((foodItem, itemIndex) => (
+                        <li
+                          key={itemIndex}
+                          className="flex justify-between items-center text-gray-300"
+                        >
+                          <span className="font-medium">{foodItem.foodName}</span>
+                          <span>{foodItem.quantity}</span>
+                          <span>{foodItem.calories} Calories</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
-            </div>
-          ))}
+              </div>
+            ))
+          ) : (
+            // Old format (single day)
+            dietPlan.dailyDiet.map((meal, index) => (
+              <div
+                className="bg-gray-700 p-5 rounded-lg shadow-sm"
+                key={index}
+              >
+                <h3 className="text-xl font-semibold text-indigo-400">
+                  {meal.typeOfMeal}
+                </h3>
+                <ul className="mt-4 space-y-3">
+                  {meal.FoodItems.map((foodItem, itemIndex) => (
+                    <li
+                      key={itemIndex}
+                      className="flex justify-between items-center text-gray-300"
+                    >
+                      <span className="font-medium">{foodItem.foodName}</span>
+                      <span>{foodItem.quantity}</span>
+                      <span>{foodItem.calories} Calories</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
         </div>
       </div>
     )}

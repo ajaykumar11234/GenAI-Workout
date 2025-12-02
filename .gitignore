@@ -14,12 +14,18 @@ flask/.env
 
 # Node.js backend-specific ignores
 backend/node_modules/
-backend/logs/
-backend/*.log
 backend/.env
+backend/.env.local
 
 # Frontend-specific ignores
 frontend/node_modules/
 frontend/dist/
 frontend/build/
 frontend/.env
+frontend/.env.local
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local

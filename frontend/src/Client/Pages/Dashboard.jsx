@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import config from '../../config/config';
 
 import {
   Activity,
@@ -9,73 +10,142 @@ import {
   Calendar,
   Users,
   BarChart,
+  Dumbbell,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 // console.log(user);
 
 const Dashboard = () => {
-  // const [user, setUser] = useState(null);
   const [name, setName] = useState("");
+  const [performanceData, setPerformanceData] = useState(null);
+  const [userId, setUserId] = useState(null);
 
-  let user = {};
   useEffect(() => {
     const storedData = localStorage.getItem("userData");
     if (storedData) {
-      user = JSON.parse(storedData); // Converts back to object
-      console.log("Retrieved schema data:", user);
-      setName(user.fullName);
-      // Access schema fields
-      console.log("User ID:", user.fullName);
-      console.log("Name:", user.email);
+      const user = JSON.parse(storedData);
+      console.log("Retrieved user data:", user);
+      setName(user.fullName || "");
+      setUserId(user._id);
     } else {
       console.log("No user data found in localStorage.");
     }
-  });
+  }, []);
 
-  // if (loading) {
-  //   return <p>Loading...</p>; // Show a loading indicator while fetching data
-  // }
+  // Fetch performance data and form analysis
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!userId) return;
+      
+      try {
+        const accessToken = localStorage.getItem('accessToken');
+        
+        // Fetch performance data with cache busting
+        const perfResponse = await axios.get(
+          `${config.backendUrl}/workoutPerformance/${userId}?t=${Date.now()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+        console.log("Dashboard performance response:", perfResponse.data);
+        console.log("Dashboard performance response:", perfResponse.data);
+        if (perfResponse.data.users && perfResponse.data.users.length > 0) {
+          setPerformanceData(perfResponse.data.users[0]);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      }
+    };
+    
+    fetchData();
+  }, [userId]);
+  // Calculate stats from performance data
+  const getStats = () => {
+    if (!performanceData || !performanceData.workouts || performanceData.workouts.length === 0) {
+      return { totalWorkouts: 0, totalReps: 0, totalDuration: 0, totalCalories: 0, recentExercise: 'None' };
+    }
 
-  if (!user) {
-    return (
-      <p>
-        Error: User data could not be loaded. Please <a href="/login">log in</a>
-        .
-      </p>
-    ); // Handle missing user data
-  }
+    const totalWorkouts = performanceData.workouts.length;
+    let totalReps = 0;
+    let totalDuration = 0;
+    let totalCalories = 0;
+    let recentExercise = 'None';
+
+    if (performanceData.workouts.length > 0) {
+      // Sort workouts by date (most recent first)
+      const sortedWorkouts = [...performanceData.workouts].sort((a, b) => 
+        new Date(b.date) - new Date(a.date)
+      );
+      
+      const recentWorkout = sortedWorkouts[0];
+      if (recentWorkout.todayExercises && recentWorkout.todayExercises.length > 0) {
+        // Get the most recent exercise (last one in the array)
+        const latestExercise = recentWorkout.todayExercises[recentWorkout.todayExercises.length - 1];
+        recentExercise = latestExercise.workoutName;
+        
+        // Calculate totals from all workouts
+        performanceData.workouts.forEach(workout => {
+          workout.todayExercises?.forEach(exercise => {
+            exercise.sets?.forEach(set => {
+              totalReps += set.rep || 0;
+            });
+            totalDuration += exercise.duration || 0;
+            totalCalories += exercise.calories || 0;
+          });
+        });
+      }
+    }
+
+    return { totalWorkouts, totalReps, totalDuration, totalCalories, recentExercise };
+  };
+
+  const stats = getStats();
 
   return (
     <div className="flex flex-col min-h-screen w-screen overflow-x-hidden bg-black text-gray-100">
     <div className="w-full max-w-screen-xl mx-auto flex-1 px-4 py-10 sm:px-6 md:px-8 lg:px-16">
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
-          Welcome back, {name}!
+          Welcome back, {name || "User"}!
         </h1>
         <p className="text-gray-400">
           Last updated: {new Date().toLocaleDateString()}
         </p>
       </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
           <StatCard
-            icon={<Activity className="h-8 w-8 text-blue-400" />}
-            title="Active Workouts"
-            value="3"
-            subtitle="Current week"
+            icon={<Dumbbell className="h-8 w-8 text-blue-400" />}
+            title="Total Workouts"
+            value={stats.totalWorkouts.toString()}
+            subtitle="Completed sessions"
           />
           <StatCard
             icon={<TrendingUp className="h-8 w-8 text-green-400" />}
-            title="Progress"
-            value="85%"
-            subtitle="Goal completion"
+            title="Total Reps"
+            value={stats.totalReps.toString()}
+            subtitle="All time"
+          />
+          <StatCard
+            icon={<Activity className="h-8 w-8 text-purple-400" />}
+            title="Time Spent"
+            value={stats.totalDuration > 0 ? `${Math.floor(stats.totalDuration / 60)}m` : '0m'}
+            subtitle="Total duration"
           />
           <StatCard
             icon={<Heart className="h-8 w-8 text-red-400" />}
             title="Calories Burned"
-            value="1,250"
-            subtitle="This week"
+            value={stats.totalCalories > 0 ? `${Math.round(stats.totalCalories)}` : '0'}
+            subtitle="Total kcal"
+          />
+          <StatCard
+            icon={<Activity className="h-8 w-8 text-purple-400" />}
+            title="Recent Exercise"
+            value={stats.recentExercise}
+            subtitle="Last workout"
           />
         </div>
 
@@ -98,7 +168,6 @@ const Dashboard = () => {
             description="Perfect your moves and push your limits with real-time corrections"
             link="/exerciseTracker"
           />
-           
         </div>
       </div>
       <hr />

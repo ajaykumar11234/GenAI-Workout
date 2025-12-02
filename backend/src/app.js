@@ -11,10 +11,13 @@ import weightLogRouter from "./routes/weightLog.route.js";
 import performanceRouter from "./routes/performance.routes.js";
 import AdminRouter from "./routes/Admin.routes.js";
 import { dailyRouter } from "./routes/DailyStats.routes.js";
+import FitnessChatRouter from "./routes/FitnessChat.routes.js";
+import foodLogRouter from "./routes/FoodLog.routes.js";
+import formAnalysisRouter from "./routes/FormAnalysis.routes.js";
 
 const app = express();
 
-/* ✅ CORS Fix */
+/* ✅ CORS Configuration */
 app.use(
   cors({
     origin: [
@@ -32,7 +35,22 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use(cookieParser());
 
-/* ✅ Routes */
+/* ✅ Health Check */
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "OK", 
+    uptime: process.uptime(),
+    timestamp: Date.now(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+/* ✅ Test Root */
+app.get("/", (req, res) => {
+  res.json({ status: "OK", message: "API Working ✅" });
+});
+
+/* ✅ API Routes */
 app.use("/api/v1/user", UserRouter);
 app.use("/api/v1/user", WorkoutRouter);
 app.use("/api/v1/user", DietRouter);
@@ -41,11 +59,10 @@ app.use("/api/v1/user", FoodRouter);
 app.use("/api/v1/user", weightLogRouter);
 app.use("/api/v1/user", performanceRouter);
 app.use("/api/v1/user", dailyRouter);
+app.use("/api/v1/user/food-log", foodLogRouter);
+app.use("/api/v1/user/form-analysis", formAnalysisRouter);
+app.use("/api/v1", FitnessChatRouter);
 app.use("/api/v1/admin", AdminRouter);
 
-/* ✅ Test Root */
-app.get("/", (req, res) => {
-  res.json({ status: "OK", message: "API Working ✅" });
-});
-
 export { app };
+

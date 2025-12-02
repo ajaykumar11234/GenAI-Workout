@@ -35,6 +35,9 @@ const GetDietPlan = () => {
     if (loading) return <Spinner/>;
     if (!dietPlan) return <NotFound/>;
   
+    // Check if this is old format (direct meals) or new format (7-day with nested meals)
+    const isNewFormat = dietPlan.dailyDiet?.[0]?.day !== undefined;
+  
     return (
       <div className="flex justify-center w-screen items-center min-h-screen bg-black text-gray-200 p-6">
   <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl overflow-x-auto">
@@ -49,23 +52,54 @@ const GetDietPlan = () => {
         </tr>
       </thead>
       <tbody>
-        {dietPlan.dailyDiet.map((diet, dayIndex) => (
-          <React.Fragment key={dayIndex}>
-            <tr className="bg-gray-700 font-bold text-white">
-              <td colSpan="4" className="px-6 py-3 text-lg">
-                {diet.typeOfMeal}
-              </td>
-            </tr>
-            {diet.FoodItems.map((item, itemIndex) => (
-              <tr key={itemIndex} className="border-b border-gray-600 hover:bg-gray-700">
-                <td className="px-6 py-4"></td>
-                <td className="px-6 py-4">{item.foodName}</td>
-                <td className="px-6 py-4">{item.quantity}</td>
-                <td className="px-6 py-4">{item.calories}</td>
+        {isNewFormat ? (
+          // New 7-day format
+          dietPlan.dailyDiet.map((dayPlan, dayIndex) => (
+            <React.Fragment key={dayIndex}>
+              <tr className="bg-indigo-600 font-bold text-white">
+                <td colSpan="4" className="px-6 py-3 text-xl">
+                  {dayPlan.day}
+                </td>
               </tr>
-            ))}
-          </React.Fragment>
-        ))}
+              {dayPlan.meals.map((meal, mealIndex) => (
+                <React.Fragment key={`${dayIndex}-${mealIndex}`}>
+                  <tr className="bg-gray-700 font-semibold text-white">
+                    <td colSpan="4" className="px-6 py-3 text-lg">
+                      {meal.typeOfMeal}
+                    </td>
+                  </tr>
+                  {meal.FoodItems.map((item, itemIndex) => (
+                    <tr key={itemIndex} className="border-b border-gray-600 hover:bg-gray-700">
+                      <td className="px-6 py-4"></td>
+                      <td className="px-6 py-4">{item.foodName}</td>
+                      <td className="px-6 py-4">{item.quantity}</td>
+                      <td className="px-6 py-4">{item.calories}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </React.Fragment>
+          ))
+        ) : (
+          // Old format (single day)
+          dietPlan.dailyDiet.map((diet, dayIndex) => (
+            <React.Fragment key={dayIndex}>
+              <tr className="bg-gray-700 font-bold text-white">
+                <td colSpan="4" className="px-6 py-3 text-lg">
+                  {diet.typeOfMeal}
+                </td>
+              </tr>
+              {diet.FoodItems.map((item, itemIndex) => (
+                <tr key={itemIndex} className="border-b border-gray-600 hover:bg-gray-700">
+                  <td className="px-6 py-4"></td>
+                  <td className="px-6 py-4">{item.foodName}</td>
+                  <td className="px-6 py-4">{item.quantity}</td>
+                  <td className="px-6 py-4">{item.calories}</td>
+                </tr>
+              ))}
+            </React.Fragment>
+          ))
+        )}
       </tbody>
     </table>
   </div>

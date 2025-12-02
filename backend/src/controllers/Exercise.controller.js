@@ -1,5 +1,5 @@
 import { asyncHandler } from "../asyncHandler.js";
-import { run } from "../geminiAPI.js";
+import { run } from "../groqAPI.js";
 import { Exercise } from "../models/Exercise.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiSuccess } from "../utils/ApiSuccess.js";
@@ -72,7 +72,7 @@ async function ExerciseFunction(ex) {
         allResults.push(...parsedResult);
       } catch (error) {
         console.error("Error fetching exercise data:", error);
-        throw new ApiError(500, "Error fetching exercise data from Gemini API");
+        throw new ApiError(500, "Error fetching exercise data from Groq API");
       }
     }
 

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Home, Dumbbell, Apple, User, LogOut, Menu, X, Activity } from "lucide-react"; // Import Menu and X icons for hamburger
+import { Home, Dumbbell, Apple, User, LogOut, Menu, X, Activity, Bot, UtensilsCrossed, TrendingUp } from "lucide-react"; // Import Menu and X icons for hamburger
 import { useState } from "react";
 import axios from "axios";
 import config from "../../config/config";
@@ -70,9 +70,12 @@ export default function Navbar() {
             >
               Performance
             </button> */}
-            <NavLink to="/user-performance" icon={<Activity/>} text="Performace"/>
+            <NavLink to="/user-performance" icon={<Activity/>} text="Performance"/>
             <NavLink to="/getWorkoutPlan" icon={<Dumbbell />} text="Workout" />
             <NavLink to="/getDiet" icon={<Apple />} text="Diet" />
+            <NavLink to="/nutrition" icon={<UtensilsCrossed />} text="Nutrition" />
+            <NavLink to="/form-analysis" icon={<TrendingUp />} text="Form Analysis" />
+            <NavLink to="/fitness-chatbot" icon={<Bot />} text="AI Chat" />
             <NavLink to="/profile" icon={<User />} text="Profile" />
 
             {/* Logout Button */}
@@ -89,8 +92,12 @@ export default function Navbar() {
         {/* Mobile Navigation Links */}
         {isMenuOpen && (
           <div className="lg:hidden mt-4 space-y-4">
+            <NavLink to="/user-performance" icon={<Activity/>} text="Performance"/>
             <NavLink to="/getWorkoutPlan" icon={<Dumbbell />} text="Workout" />
             <NavLink to="/getDiet" icon={<Apple />} text="Diet" />
+            <NavLink to="/nutrition" icon={<UtensilsCrossed />} text="Nutrition" />
+            <NavLink to="/form-analysis" icon={<TrendingUp />} text="Form Analysis" />
+            <NavLink to="/fitness-chatbot" icon={<Bot />} text="AI Chat" />
             <NavLink to="/profile" icon={<User />} text="Profile" />
 
             {/* Logout Button */}

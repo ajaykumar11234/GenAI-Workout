@@ -43,6 +43,14 @@ const PerformanceSchema = new Schema(
                 },
               },
             ],
+            duration: {
+              type: Number,
+              default: 0, // Duration in seconds
+            },
+            calories: {
+              type: Number,
+              default: 0, // Calories burned
+            },
           },
         ],
       },

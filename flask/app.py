@@ -2,14 +2,19 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import time
-from flask import Flask, Response, jsonify
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from collections import deque
 import threading
 import random
+import requests
+import json
 
 app = Flask(__name__)
 CORS(app)
+
+# Configuration for Node.js backend
+NODEJS_BACKEND_URL = "http://localhost:4000/api/v1/user"
 
 # -----------------------------
 # Mediapipe setup
@@ -152,7 +157,20 @@ state = {
     'last_feedback_time': 0,
     'rep_times': deque(maxlen=10),  # Track rep timing
     'average_rep_time': 0,
-    'best_rep_quality': 0
+    'best_rep_quality': 0,
+    # NEW: Detailed form analysis
+    'detailed_scores': {
+        'knee_alignment': 100,
+        'back_position': 100,
+        'hip_alignment': 100,
+        'range_of_motion': 100,
+        'tempo': 100,
+        'overall': 100
+    },
+    'injury_risks': [],
+    'rep_history': [],  # Store each rep's detailed data
+    'active_injury_alert': None,
+    'form_trend': 'stable'  # improving, stable, declining
 }
 
 # -----------------------------
@@ -189,11 +207,20 @@ def calculate_rep_quality(angle, exercise):
         return 'incomplete', 25
 
 # -----------------------------
-# Enhanced form correction checks
+# Enhanced form correction checks with detailed scoring
 # -----------------------------
-def check_detailed_form(landmarks, exercise):
-    form_issues = []
-    now = time.time()
+def calculate_detailed_form_scores(landmarks, exercise):
+    """Calculate detailed form scores (0-100) for each aspect"""
+    scores = {
+        'knee_alignment': 100,
+        'back_position': 100,
+        'hip_alignment': 100,
+        'range_of_motion': 100,
+        'tempo': 100,
+        'overall': 100
+    }
+    
+    injury_risks = []
     
     if exercise == "squat":
         hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value]
@@ -201,63 +228,180 @@ def check_detailed_form(landmarks, exercise):
         ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value]
         left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value]
         shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
-
-        # Check depth
-        if hip.y < knee.y and state['stage'] == 'down':
-            form_issues.append('not_deep')
+        left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value]
         
-        # Check knee alignment
-        if abs(knee.x - ankle.x) > 0.1:
-            form_issues.append('knees_cave')
+        # Calculate knee angle for detailed tracking
+        knee_angle = calculate_angle(
+            [hip.x, hip.y],
+            [knee.x, knee.y],
+            [ankle.x, ankle.y]
+        )
         
-        # Check forward lean
-        if shoulder.x < hip.x - 0.1:
-            form_issues.append('forward_lean')
+        # Knee alignment score (checking for knee cave)
+        knee_offset = abs(knee.x - ankle.x)
+        if knee_offset > 0.15:
+            scores['knee_alignment'] = max(0, 100 - (knee_offset - 0.15) * 500)
+            injury_risks.append({
+                'severity': 'high',
+                'issue': 'Severe knee cave detected',
+                'recommendation': 'Push knees out! This can cause knee injury.'
+            })
+        elif knee_offset > 0.1:
+            scores['knee_alignment'] = max(70, 100 - (knee_offset - 0.1) * 400)
+            injury_risks.append({
+                'severity': 'medium',
+                'issue': 'Knee valgus (cave-in)',
+                'recommendation': 'Focus on pushing knees outward'
+            })
         
-        # Check knee tracking over toes
-        if knee.x > ankle.x + 0.15:
-            form_issues.append('knees_forward')
-
+        # Back position score (checking forward lean)
+        lean_offset = abs(shoulder.x - hip.x)
+        if lean_offset > 0.15:
+            scores['back_position'] = max(0, 100 - (lean_offset - 0.15) * 400)
+            injury_risks.append({
+                'severity': 'high',
+                'issue': 'Excessive forward lean - back injury risk',
+                'recommendation': 'Keep chest up and back straight!'
+            })
+        elif lean_offset > 0.1:
+            scores['back_position'] = max(70, 100 - (lean_offset - 0.1) * 300)
+        
+        # Hip alignment score
+        hip_level = abs(hip.y - left_hip.y)
+        if hip_level > 0.05:
+            scores['hip_alignment'] = max(60, 100 - hip_level * 800)
+        
+        # Range of motion score (depth)
+        if state['stage'] == 'down':
+            if hip.y >= knee.y:
+                depth_diff = hip.y - knee.y
+                scores['range_of_motion'] = max(50, 100 - depth_diff * 300)
+        
     elif exercise == "pushup":
         shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
         hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value]
         ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value]
         elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
         wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
-
-        # Check plank position
-        hip_shoulder_diff = abs(hip.y - shoulder.y)
-        shoulder_ankle_diff = abs(shoulder.y - ankle.y)
         
-        if hip.y > shoulder.y + 0.1:
-            form_issues.append('hips_sag')
-        elif hip.y < shoulder.y - 0.1:
-            form_issues.append('hips_high')
+        # Back alignment score (plank position)
+        hip_sag = hip.y - shoulder.y
+        if hip_sag > 0.15:
+            scores['back_position'] = max(0, 100 - (hip_sag - 0.15) * 400)
+            injury_risks.append({
+                'severity': 'high',
+                'issue': 'Lower back sagging - injury risk!',
+                'recommendation': 'Engage core! Lift hips to plank position.'
+            })
+        elif hip_sag > 0.1:
+            scores['back_position'] = max(70, 100 - (hip_sag - 0.1) * 300)
+        elif hip_sag < -0.1:
+            scores['back_position'] = max(70, 100 - abs(hip_sag + 0.1) * 300)
         
-        # Check elbow flare
-        if abs(elbow.x - shoulder.x) > 0.2:
-            form_issues.append('elbows_flare')
+        # Elbow alignment score
+        elbow_flare = abs(elbow.x - shoulder.x)
+        if elbow_flare > 0.25:
+            scores['hip_alignment'] = max(50, 100 - (elbow_flare - 0.25) * 300)
+            injury_risks.append({
+                'severity': 'medium',
+                'issue': 'Elbows flaring out',
+                'recommendation': 'Tuck elbows closer to body (45° angle)'
+            })
+        elif elbow_flare > 0.2:
+            scores['hip_alignment'] = max(75, 100 - (elbow_flare - 0.2) * 200)
         
-        # Check hand position
-        if abs(wrist.x - shoulder.x) > 0.15:
-            form_issues.append('hands_wrong')
-
+        # Hand position score
+        hand_offset = abs(wrist.x - shoulder.x)
+        if hand_offset > 0.2:
+            scores['knee_alignment'] = max(60, 100 - (hand_offset - 0.2) * 300)
+    
     elif exercise == "bicep_curl":
         wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
         elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value]
         shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+        
+        # Elbow position score
+        elbow_forward = abs(min(0, shoulder.x - elbow.x - 0.15))
+        if elbow_forward > 0.2:
+            scores['hip_alignment'] = max(50, 100 - (elbow_forward - 0.2) * 300)
+            injury_risks.append({
+                'severity': 'medium',
+                'issue': 'Elbow moving forward',
+                'recommendation': 'Pin elbow to your side - isolate bicep!'
+            })
+        elif elbow_forward > 0.15:
+            scores['hip_alignment'] = max(75, 100 - (elbow_forward - 0.15) * 200)
+        
+        # Check for momentum/swinging
+        elbow_movement = abs(elbow.x - shoulder.x)
+        if elbow_movement > 0.25:
+            scores['knee_alignment'] = max(40, 100 - (elbow_movement - 0.25) * 400)
+            injury_risks.append({
+                'severity': 'low',
+                'issue': 'Using momentum instead of muscle',
+                'recommendation': 'Control the weight - no swinging!'
+            })
+    
+    # Tempo score (check rep timing)
+    if state['average_rep_time'] > 0:
+        # Ideal rep time: 2-4 seconds
+        if state['average_rep_time'] < 1.5:
+            scores['tempo'] = 60  # Too fast
+        elif state['average_rep_time'] > 5:
+            scores['tempo'] = 75  # Too slow
+        else:
+            scores['tempo'] = 100
+    
+    # Calculate overall score (weighted average)
+    scores['overall'] = int(
+        scores['knee_alignment'] * 0.25 +
+        scores['back_position'] * 0.30 +
+        scores['hip_alignment'] * 0.20 +
+        scores['range_of_motion'] * 0.15 +
+        scores['tempo'] * 0.10
+    )
+    
+    return scores, injury_risks
 
-        # Check elbow position
-        if elbow.x < shoulder.x - 0.15:
-            form_issues.append('elbow_forward')
-        
-        if elbow.y < shoulder.y - 0.1:
-            form_issues.append('elbow_high')
-        
-        # Check for swinging
-        if abs(elbow.x - shoulder.x) > 0.2:
+def check_detailed_form(landmarks, exercise):
+    """Legacy function - now calls detailed scoring"""
+    scores, injury_risks = calculate_detailed_form_scores(landmarks, exercise)
+    
+    # Convert low scores to form issues
+    form_issues = []
+    
+    if scores['knee_alignment'] < 70:
+        if exercise == "squat":
+            form_issues.append('knees_cave')
+        elif exercise == "bicep_curl":
             form_issues.append('swinging')
-
+        elif exercise == "pushup":
+            form_issues.append('hands_wrong')
+    
+    if scores['back_position'] < 70:
+        if exercise == "squat":
+            form_issues.append('forward_lean')
+        elif exercise == "pushup":
+            form_issues.append('hips_sag')
+    
+    if scores['hip_alignment'] < 70:
+        if exercise == "pushup":
+            form_issues.append('elbows_flare')
+        elif exercise == "bicep_curl":
+            form_issues.append('elbow_forward')
+    
+    if scores['range_of_motion'] < 70:
+        if exercise == "squat":
+            form_issues.append('not_deep')
+        elif exercise == "pushup":
+            form_issues.append('partial_range')
+        elif exercise == "bicep_curl":
+            form_issues.append('partial_range')
+    
+    # Store scores and injury risks in state
+    state['detailed_scores'] = scores
+    state['injury_risks'] = injury_risks
+    
     return form_issues
 
 def provide_form_feedback(form_issues, exercise):
@@ -309,35 +453,54 @@ def process_pose(landmarks, exercise):
             # Calculate rep quality
             rep_quality, quality_score = calculate_rep_quality(smoothed, exercise)
             
-            # Only count good quality reps
-            if rep_quality in ['excellent', 'good']:
+            # Get detailed form scores
+            detailed_scores = state.get('detailed_scores', {})
+            overall_form_score = detailed_scores.get('overall', quality_score)
+            
+            # Only count good quality reps (at least 60% form score)
+            if overall_form_score >= 60:
                 reps += 1
                 state['reps'] = reps
                 state['stage'] = 'up'
+                rep_duration = now - state['last_rep_time']
                 state['last_rep_time'] = now
                 state['calories_burned'] += cfg['calories_per_rep']
-                state['rep_quality_score'] = quality_score
+                state['rep_quality_score'] = overall_form_score
+                
+                # Store detailed rep data
+                rep_data = {
+                    'rep_number': reps,
+                    'quality': rep_quality,
+                    'score': overall_form_score,
+                    'duration': round(rep_duration, 2),
+                    'timestamp': now,
+                    'detailed_scores': detailed_scores.copy(),
+                    'issues': state['form_issues'].copy()
+                }
+                state['rep_history'].append(rep_data)
                 
                 # Track rep timing
-                if state['rep_times']:
-                    rep_time = now - (state['last_rep_time'] - 0.8)
-                    state['rep_times'].append(rep_time)
-                    state['average_rep_time'] = sum(state['rep_times']) / len(state['rep_times'])
+                state['rep_times'].append(rep_duration)
+                state['average_rep_time'] = sum(state['rep_times']) / len(state['rep_times'])
                 
                 # Track consecutive good reps
                 state['consecutive_good_reps'] += 1
                 state['total_good_reps'] += 1
                 
-                if quality_score > state['best_rep_quality']:
-                    state['best_rep_quality'] = quality_score
+                if overall_form_score > state['best_rep_quality']:
+                    state['best_rep_quality'] = overall_form_score
                 
-                # Provide motivational feedback based on milestones
+                # Provide motivational feedback based on form quality
                 feedback = None
                 
-                if rep_quality == 'excellent':
-                    feedback = f"🌟 EXCELLENT REP #{reps}! Perfect form! {get_random_message('encouragement')}"
-                elif rep_quality == 'good':
-                    feedback = f"✅ Great rep #{reps}! {get_random_message('encouragement')}"
+                if overall_form_score >= 90:
+                    feedback = f"🌟 PERFECT REP #{reps}! Flawless form! {get_random_message('encouragement')}"
+                elif overall_form_score >= 80:
+                    feedback = f"✨ EXCELLENT REP #{reps}! {get_random_message('encouragement')}"
+                elif overall_form_score >= 70:
+                    feedback = f"✅ Great rep #{reps}!"
+                else:
+                    feedback = f"✓ Rep #{reps} counted - improve form for better results"
                 
                 # Milestone motivation
                 if reps % 5 == 0 and reps > state['last_motivation_rep']:
@@ -368,10 +531,7 @@ def process_pose(landmarks, exercise):
             else:
                 # Poor quality rep - don't count it
                 state['consecutive_good_reps'] = 0
-                if rep_quality == 'poor':
-                    state['feedback'] = "⚠️ Incomplete rep! Focus on full range of motion!"
-                else:
-                    state['feedback'] = "❌ Rep not counted - improve your form!"
+                state['feedback'] = f"⚠️ Rep not counted (Form: {int(overall_form_score)}%) - Check your form!"
 
     # Provide form corrections if no recent feedback
     if form_issues and now - state['last_feedback_time'] > 2.0:
@@ -379,6 +539,19 @@ def process_pose(landmarks, exercise):
         if correction:
             state['feedback'] = correction
             state['last_feedback_time'] = now
+    
+    # INJURY ALERT SYSTEM - Priority feedback
+    injury_risks = state.get('injury_risks', [])
+    if injury_risks:
+        # Show most severe injury risk
+        critical_risks = [r for r in injury_risks if r['severity'] in ['critical', 'high']]
+        if critical_risks and now - state['last_feedback_time'] > 1.5:
+            alert = critical_risks[0]
+            state['active_injury_alert'] = alert
+            state['feedback'] = f"🚨 {alert['issue']}! {alert['recommendation']}"
+            state['last_feedback_time'] = now
+    else:
+        state['active_injury_alert'] = None
     
     # Rest period countdown
     if state['in_rest'] and now < state['rest_end_time']:
@@ -501,16 +674,176 @@ def stop():
         t.join()
     state['capture_thread'] = None
     
-    # Provide workout summary
-    summary = {
-        "total_reps": state['total_good_reps'],
-        "best_quality": state['best_rep_quality'],
-        "calories": round(state['calories_burned'], 1),
-        "time": state['total_workout_time'],
-        "message": f"Workout complete! {state['total_good_reps']} quality reps! 🎉"
+    # Calculate workout duration
+    workout_duration = int(time.time() - state['workout_start_time']) if state['workout_start_time'] > 0 else 0
+    
+    # Calculate average form scores from rep history
+    rep_history = state.get('rep_history', [])
+    avg_scores = {
+        'knee_alignment': 100,
+        'back_position': 100,
+        'hip_alignment': 100,
+        'range_of_motion': 100,
+        'tempo': 100,
+        'overall': state.get('detailed_scores', {}).get('overall', 100)
     }
     
+    if rep_history:
+        for score_key in avg_scores.keys():
+            if score_key != 'overall':
+                scores = [rep.get('detailed_scores', {}).get(score_key, 100) for rep in rep_history]
+                avg_scores[score_key] = int(sum(scores) / len(scores)) if scores else 100
+        
+        # Recalculate overall from averages
+        avg_scores['overall'] = int(
+            avg_scores['knee_alignment'] * 0.25 +
+            avg_scores['back_position'] * 0.30 +
+            avg_scores['hip_alignment'] * 0.20 +
+            avg_scores['range_of_motion'] * 0.15 +
+            avg_scores['tempo'] * 0.10
+        )
+    
+    # Provide detailed workout summary
+    summary = {
+        "exercise_name": state['exercise'],
+        "total_reps": state['total_good_reps'],
+        "total_sets": state['current_set'],
+        "best_quality": state['best_rep_quality'],
+        "average_quality": state['rep_quality_score'],
+        "calories": round(state['calories_burned'], 1),
+        "duration": workout_duration,
+        "average_rep_time": round(state['average_rep_time'], 2) if state['average_rep_time'] > 0 else 0,
+        "form_score": state['form_score'],
+        "message": f"Workout complete! {state['total_good_reps']} quality reps! 🎉",
+        # NEW: Detailed form analysis
+        "form_scores": avg_scores,
+        "injury_alerts": state.get('injury_risks', []),
+        "rep_data": rep_history
+    }
+    
+    # Get user token from request headers and save to backend
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        try:
+            # Save performance data (existing)
+            save_to_backend(summary, auth_header)
+            # Save form analysis data (new)
+            save_form_analysis(summary, auth_header)
+        except Exception as e:
+            print(f"Failed to save to backend: {e}")
+    
     return jsonify({"status": "stopped", "summary": summary})
+
+def save_to_backend(summary, auth_token):
+    """Save workout performance data to Node.js backend"""
+    try:
+        # Prepare data in the format expected by backend
+        performance_data = {
+            "workoutName": summary['exercise_name'],
+            "sets": [{
+                "set": summary['total_sets'],
+                "rep": summary['total_reps'],
+                "weight": 0  # OpenCV doesn't track weight
+            }],
+            "duration": summary.get('duration', 0),
+            "calories": summary.get('calories', 0)
+        }
+        
+        # Send POST request to Node.js backend
+        headers = {
+            'Authorization': auth_token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(
+            f"{NODEJS_BACKEND_URL}/add-performance",
+            json=performance_data,
+            headers=headers,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            print(f"✅ Performance data saved to backend: {summary['exercise_name']} - {summary['total_reps']} reps")
+            return True
+        else:
+            print(f"❌ Failed to save to backend: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error saving to backend: {str(e)}")
+        return False
+
+def save_form_analysis(summary, auth_token):
+    """Save detailed form analysis data to Node.js backend"""
+    try:
+        # Clean rep data - ensure proper structure and remove invalid data
+        rep_data = summary.get('rep_data', [])
+        cleaned_rep_data = []
+        
+        for rep in rep_data:
+            # Only include reps with valid data
+            if isinstance(rep, dict) and rep.get('rep_number') and rep.get('score'):
+                cleaned_rep = {
+                    'repNumber': rep.get('rep_number'),
+                    'quality': rep.get('quality', 'fair'),
+                    'score': rep.get('score'),
+                    'duration': rep.get('duration', 0),
+                    'issues': rep.get('issues', [])
+                }
+                # Ensure quality is valid
+                if cleaned_rep['quality'] not in ['excellent', 'good', 'fair', 'poor', 'incomplete']:
+                    cleaned_rep['quality'] = 'fair'
+                cleaned_rep_data.append(cleaned_rep)
+        
+        # Clean injury alerts
+        injury_alerts = summary.get('injury_alerts', [])
+        cleaned_alerts = []
+        
+        for alert in injury_alerts:
+            if isinstance(alert, dict):
+                cleaned_alert = {
+                    'severity': alert.get('severity', 'low'),
+                    'issue': alert.get('issue', ''),
+                    'recommendation': alert.get('recommendation', '')
+                }
+                # Ensure severity is valid
+                if cleaned_alert['severity'] not in ['low', 'medium', 'high', 'critical']:
+                    cleaned_alert['severity'] = 'low'
+                cleaned_alerts.append(cleaned_alert)
+        
+        # Prepare form analysis data
+        form_data = {
+            "exercise": summary['exercise_name'],
+            "totalReps": summary['total_reps'],
+            "sessionDuration": summary.get('duration', 0),
+            "formScores": summary.get('form_scores', {}),
+            "injuryAlerts": cleaned_alerts,
+            "repData": cleaned_rep_data
+        }
+        
+        # Send POST request to form analysis endpoint
+        headers = {
+            'Authorization': auth_token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(
+            f"{NODEJS_BACKEND_URL}/form-analysis/save",
+            json=form_data,
+            headers=headers,
+            timeout=5
+        )
+        
+        if response.status_code in [200, 201]:
+            print(f"✅ Form analysis saved: {summary['exercise_name']} - Overall score: {form_data['formScores'].get('overall', 'N/A')}")
+            return True
+        else:
+            print(f"❌ Failed to save form analysis: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error saving form analysis: {str(e)}")
+        return False
 
 @app.route("/reset", methods=["POST"])
 def reset():
@@ -555,7 +888,7 @@ def status():
         "exercise": state['exercise'],
         "set": state['current_set'],
         "total_sets": state['total_sets'],
-        "reps": state['reps'],  # This is already only correct reps
+        "reps": state['reps'],
         "feedback": state['feedback'],
         "calories": round(state['calories_burned'], 1),
         "time": state['total_workout_time'],
@@ -569,7 +902,11 @@ def status():
         "average_rep_time": round(state['average_rep_time'], 1) if state['average_rep_time'] else 0,
         "best_quality": state['best_rep_quality'],
         "in_rest": state['in_rest'],
-        "correct_reps_only": True  # Indicate that reps count only includes correct form reps
+        "correct_reps_only": True,
+        # NEW: Detailed form analysis
+        "detailed_scores": state.get('detailed_scores', {}),
+        "injury_alert": state.get('active_injury_alert'),
+        "form_trend": state.get('form_trend', 'stable')
     })
 
 @app.route("/motivation", methods=["POST"])

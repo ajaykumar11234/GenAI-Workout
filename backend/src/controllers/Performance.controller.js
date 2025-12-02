@@ -6,7 +6,7 @@ import { ApiSuccess } from "../utils/ApiSuccess.js";
 
 const AddPerformance = asyncHandler(async (req, res) => {
     try {
-        const { workoutName, sets } = req.body;
+        const { workoutName, sets, duration, calories } = req.body;
         const userID = req.user?._id;
 
         // Validate inputs
@@ -43,13 +43,17 @@ const AddPerformance = asyncHandler(async (req, res) => {
             );
 
             if (existingExercise) {
-                // Update the existing exercise's sets
+                // Update the existing exercise's sets, duration, and calories
                 existingExercise.sets = sets;
+                existingExercise.duration = duration || 0;
+                existingExercise.calories = calories || 0;
             } else {
                 // Add the new exercise to today's exercises
                 existingWorkout.todayExercises.push({
                     workoutName,
                     sets,
+                    duration: duration || 0,
+                    calories: calories || 0,
                 });
             }
         } else {
@@ -60,6 +64,8 @@ const AddPerformance = asyncHandler(async (req, res) => {
                     {
                         workoutName,
                         sets,
+                        duration: duration || 0,
+                        calories: calories || 0,
                     },
                 ],
             };

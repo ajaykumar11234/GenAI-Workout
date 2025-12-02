@@ -254,8 +254,7 @@ const handleOpen=(exercise)=>{
         <thead className="bg-gray-700 text-gray-200 uppercase">
           <tr>
             <th className="px-6 py-4">Day</th>
-            <th className="px-6 py-4">Exercise</th>
-            <th className="px-6 py-4">Performance</th>
+          <th className="px-6 py-4">Exercise Name</th>
             <th className="px-6 py-4">Sets</th>
             <th className="px-6 py-4">Reps</th>
           </tr>
@@ -272,14 +271,6 @@ const handleOpen=(exercise)=>{
                 <tr key={exerciseIndex} className="border-b border-gray-600 hover:bg-gray-700">
                   <td className="px-6 py-4"></td>
                   <td className="px-6 py-4">{exercise.name}</td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleOpen(exercise.name)}
-                      className="px-3 py-2 bg-gradient-to-r from-indigo-400  to-purple-400 shadow-lg text-gray-200 rounded-lg shadow-lg hover:bg-gray-500 focus:outline-none border-none transition-all"
-                    >
-                      Add Performance
-                    </button>
-                  </td>
                   <td className="px-6 py-4">{exercise.sets}</td>
                   <td className="px-6 py-4">{exercise.reps}</td>
                 </tr>

@@ -1,5 +1,5 @@
 import { asyncHandler } from "../asyncHandler.js";
-import { run } from "../geminiAPI.js";
+import { run } from "../groqAPI.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiSuccess } from "../utils/ApiSuccess.js";
 import { Workout } from "../models/workout.model.js"; // Import the Workout model
@@ -60,14 +60,24 @@ const generateWorkoutPlan = asyncHandler(async (req, res) => {
   }
 
   // Parse the answer to an object
-  // console.log("Full response from Gemini API:", answer);
+  console.log("Full response from Groq API:", answer);
 
-  const cleanedAnswer = answer.replace(/```json|```/g, "").trim();
-  // console.log(cleanedAnswer)
+  // Try to extract JSON from the response
+  let cleanedAnswer = answer.replace(/```json|```/g, "").trim();
+  
+  // If no JSON markers, try to find JSON object
+  const jsonMatch = cleanedAnswer.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleanedAnswer = jsonMatch[0];
+  }
+  
+  console.log("Cleaned answer:", cleanedAnswer);
   let workoutPlan;
   try {
     workoutPlan = JSON.parse(cleanedAnswer);
   } catch (error) {
+    console.error("JSON parse error:", error);
+    console.error("Failed to parse:", cleanedAnswer);
     throw new ApiError(
       400,
       "Invalid format returned from the workout generator",

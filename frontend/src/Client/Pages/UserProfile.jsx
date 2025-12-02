@@ -106,22 +106,32 @@ const UserProfile = () => {
     };
     // Make an API call to update user information
     try {
-      await axios.post(`${config.backendUrl}/change-user-details`,userData,{
-          withCredentials:true,
-         
-        },
-      )
-    alert("Updated Successfully");
+      const accessToken = localStorage.getItem('accessToken');
+      await axios.post(`${config.backendUrl}/change-user-details`, userData, {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`
+        }
+      });
       
+      // Update localStorage with new user data
+      const storedUserData = localStorage.getItem('userData');
+      if (storedUserData) {
+        const parsedUserData = JSON.parse(storedUserData);
+        const updatedUserData = {
+          ...parsedUserData,
+          fullName: user.fullName,
+          email: user.email,
+          phone: user.phone
+        };
+        localStorage.setItem('userData', JSON.stringify(updatedUserData));
+      }
+      
+      alert("Updated Successfully");
+      setIsEditing(false); // Exit edit mode
     } catch (error) {
+      console.error("Error updating user details:", error);
       setUserError("Failed to change the user details");
-      navigate("/dash")
-      
-      
     }
-    // console.log(user);
-    // await axios.put(...);
-    setIsEditing(false); // Exit edit mode
   };
 
   const handleSubmitPassword = async (e) => {
@@ -134,13 +144,18 @@ const UserProfile = () => {
 
   try {
     // Make API call to change password
+    const accessToken = localStorage.getItem('accessToken');
     const response = await axios.post(
-      `${config.backendUrl}/change-password`, // Change to your API endpoint
+      `${config.backendUrl}/change-password`,
       {
         oldPassword: passwords.currentPassword,
         newPassword: passwords.newPassword,
       },
-      { withCredentials: true } // Ensure cookies are sent for authentication
+      {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`
+        }
+      }
     );
 
     // Handle success response

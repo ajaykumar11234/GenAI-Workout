@@ -55,32 +55,77 @@ const UserDiet = ({ selectedDiet, selectedUser, fetchError, onClose }) => {
 
   // Calculate total calories and macro breakdown
   const calculateDietMetrics = () => {
-    const totalCalories = dietData.dailyDiet.reduce((total, meal) => 
-      total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + item.calories, 0), 
-      0
-    );
+    // Check if it's new format (7-day) or old format (single day)
+    const isNewFormat = dietData.dailyDiet?.[0]?.day !== undefined;
+    
+    if (isNewFormat) {
+      const totalCalories = dietData.dailyDiet.reduce((total, day) => 
+        total + day.meals.reduce((dayTotal, meal) => 
+          dayTotal + meal.FoodItems.reduce((mealTotal, item) => mealTotal + item.calories, 0), 
+          0
+        ), 
+        0
+      );
 
-    const totalProtein = dietData.dailyDiet.reduce((total, meal) => 
-      total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.protein || 0), 0), 
-      0
-    );
+      const totalProtein = dietData.dailyDiet.reduce((total, day) => 
+        total + day.meals.reduce((dayTotal, meal) => 
+          dayTotal + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.protein || 0), 0), 
+          0
+        ), 
+        0
+      );
 
-    const totalCarbs = dietData.dailyDiet.reduce((total, meal) => 
-      total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.carbs || 0), 0), 
-      0
-    );
+      const totalCarbs = dietData.dailyDiet.reduce((total, day) => 
+        total + day.meals.reduce((dayTotal, meal) => 
+          dayTotal + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.carbs || 0), 0), 
+          0
+        ), 
+        0
+      );
 
-    const totalFat = dietData.dailyDiet.reduce((total, meal) => 
-      total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.fat || 0), 0), 
-      0
-    );
+      const totalFat = dietData.dailyDiet.reduce((total, day) => 
+        total + day.meals.reduce((dayTotal, meal) => 
+          dayTotal + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.fat || 0), 0), 
+          0
+        ), 
+        0
+      );
 
-    return { 
-      totalCalories, 
-      totalProtein: totalProtein.toFixed(1), 
-      totalCarbs: totalCarbs.toFixed(1), 
-      totalFat: totalFat.toFixed(1) 
-    };
+      return { 
+        totalCalories, 
+        totalProtein: totalProtein.toFixed(1), 
+        totalCarbs: totalCarbs.toFixed(1), 
+        totalFat: totalFat.toFixed(1) 
+      };
+    } else {
+      // Old format
+      const totalCalories = dietData.dailyDiet.reduce((total, meal) => 
+        total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + item.calories, 0), 
+        0
+      );
+
+      const totalProtein = dietData.dailyDiet.reduce((total, meal) => 
+        total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.protein || 0), 0), 
+        0
+      );
+
+      const totalCarbs = dietData.dailyDiet.reduce((total, meal) => 
+        total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.carbs || 0), 0), 
+        0
+      );
+
+      const totalFat = dietData.dailyDiet.reduce((total, meal) => 
+        total + meal.FoodItems.reduce((mealTotal, item) => mealTotal + (item.fat || 0), 0), 
+        0
+      );
+
+      return { 
+        totalCalories, 
+        totalProtein: totalProtein.toFixed(1), 
+        totalCarbs: totalCarbs.toFixed(1), 
+        totalFat: totalFat.toFixed(1) 
+      };
+    }
   };
 
   const dietMetrics = calculateDietMetrics();
@@ -122,44 +167,91 @@ const UserDiet = ({ selectedDiet, selectedUser, fetchError, onClose }) => {
 
         {/* Detailed Meal Log */}
         <div className="bg-gray-50 p-6 m-6 rounded-lg border-2 border-gray-200">
-          <h3 className="text-xl font-bold text-gray-800 mb-6">Meal Details</h3>
-          {dietData.dailyDiet.map((meal, index) => (
-            <div 
-              key={index} 
-              className="mb-6 p-6 bg-white rounded-lg shadow-md border-2 border-gray-100 hover:shadow-xl transition duration-300"
-            >
-              <div className="flex justify-between mb-4">
-                <h4 className="text-xl font-semibold text-green-700">{meal.typeOfMeal}</h4>
-                <span className="text-gray-600 font-medium flex items-center">
-                  <Flame className="mr-2 text-orange-500" size={20} />
-                  {meal.FoodItems.reduce((total, item) => total + item.calories, 0)} calories
-                </span>
+          <h3 className="text-xl font-bold text-gray-800 mb-6">{dietData.dailyDiet[0]?.day ? '7-Day Meal Plan' : 'Meal Details'}</h3>
+          {dietData.dailyDiet[0]?.day ? (
+            // New 7-day format
+            dietData.dailyDiet.map((dayPlan, dayIndex) => (
+              <div key={dayIndex} className="mb-8">
+                <h4 className="text-2xl font-bold text-indigo-600 mb-4">{dayPlan.day}</h4>
+                {dayPlan.meals.map((meal, mealIndex) => (
+                  <div 
+                    key={mealIndex} 
+                    className="mb-6 p-6 bg-white rounded-lg shadow-md border-2 border-gray-100 hover:shadow-xl transition duration-300"
+                  >
+                    <div className="flex justify-between mb-4">
+                      <h5 className="text-xl font-semibold text-green-700">{meal.typeOfMeal}</h5>
+                      <span className="text-gray-600 font-medium flex items-center">
+                        <Flame className="mr-2 text-orange-500" size={20} />
+                        {meal.FoodItems.reduce((total, item) => total + item.calories, 0)} calories
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-green-100">
+                            <th className="p-3 text-left text-green-800 font-semibold">Food Item</th>
+                            <th className="p-3 text-left text-green-800 font-semibold">Quantity</th>
+                            <th className="p-3 text-left text-green-800 font-semibold">Calories</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {meal.FoodItems.map((food, foodIndex) => (
+                            <tr 
+                              key={foodIndex} 
+                              className="border-b border-gray-200 hover:bg-green-50 transition duration-150"
+                            >
+                              <td className="p-3">{food.foodName}</td>
+                              <td className="p-3">{food.quantity}</td>
+                              <td className="p-3">{food.calories}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-green-100">
-                      <th className="p-3 text-left text-green-800 font-semibold">Food Item</th>
-                      <th className="p-3 text-left text-green-800 font-semibold">Quantity</th>
-                      <th className="p-3 text-left text-green-800 font-semibold">Calories</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {meal.FoodItems.map((food, foodIndex) => (
-                      <tr 
-                        key={foodIndex} 
-                        className="border-b border-gray-200 hover:bg-green-50 transition duration-150"
-                      >
-                        <td className="p-3">{food.foodName}</td>
-                        <td className="p-3">{food.quantity}</td>
-                        <td className="p-3">{food.calories}</td>
+            ))
+          ) : (
+            // Old format (single day)
+            dietData.dailyDiet.map((meal, index) => (
+              <div 
+                key={index} 
+                className="mb-6 p-6 bg-white rounded-lg shadow-md border-2 border-gray-100 hover:shadow-xl transition duration-300"
+              >
+                <div className="flex justify-between mb-4">
+                  <h4 className="text-xl font-semibold text-green-700">{meal.typeOfMeal}</h4>
+                  <span className="text-gray-600 font-medium flex items-center">
+                    <Flame className="mr-2 text-orange-500" size={20} />
+                    {meal.FoodItems.reduce((total, item) => total + item.calories, 0)} calories
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-green-100">
+                        <th className="p-3 text-left text-green-800 font-semibold">Food Item</th>
+                        <th className="p-3 text-left text-green-800 font-semibold">Quantity</th>
+                        <th className="p-3 text-left text-green-800 font-semibold">Calories</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {meal.FoodItems.map((food, foodIndex) => (
+                        <tr 
+                          key={foodIndex} 
+                          className="border-b border-gray-200 hover:bg-green-50 transition duration-150"
+                        >
+                          <td className="p-3">{food.foodName}</td>
+                          <td className="p-3">{food.quantity}</td>
+                          <td className="p-3">{food.calories}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Additional Metrics */}

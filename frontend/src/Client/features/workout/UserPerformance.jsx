@@ -11,15 +11,17 @@ const UserPerformance = () => {
   const fetchUserData = async () => {
     try {
       const storedData = localStorage.getItem("userData");
+      console.log("Raw localStorage userData:", storedData);
       if (storedData) {
         const parsedUser = JSON.parse(storedData);
+        console.log("Parsed user data:", parsedUser);
         setUser(parsedUser);
         return parsedUser;
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
     }
-    return {};
+    return null;
   };
 
   // Fetch performance data from API based on user ID
@@ -34,12 +36,37 @@ const UserPerformance = () => {
           },
         }
       );
+      
+      console.log("Full API Response:", response.data); // Debug log
+      
       if (response && response.data) {
-        setPerform(response.data.users[0].workouts);
+        // The backend returns: {message: "users", users: [PerformanceDoc]}
+        // PerformanceDoc has structure: {user: userId, workouts: [...]}
+        if (response.data.users && response.data.users.length > 0) {
+          console.log("Users array found:", response.data.users);
+          const userPerformance = response.data.users[0];
+          console.log("User Performance:", userPerformance);
+          
+          if (userPerformance.workouts && userPerformance.workouts.length > 0) {
+            console.log("Workouts found:", userPerformance.workouts);
+            setPerform(userPerformance.workouts);
+          } else {
+            console.log("No workouts in performance document");
+            setPerform([]); // No workouts found
+          }
+        } else {
+          console.log("No users in response");
+          setPerform([]); // No users found
+        }
+      } else {
+        console.log("No data in response");
+        setPerform([]); // No data
       }
       setIsLoading(false);
     } catch (error) {
       console.error("Error fetching performance data:", error);
+      console.error("Error details:", error.response?.data);
+      setPerform([]); // Set empty array on error
       setIsLoading(false);
     }
   };
@@ -47,8 +74,14 @@ const UserPerformance = () => {
   useEffect(() => {
     const fetchData = async () => {
       const userData = await fetchUserData();
+      console.log("Fetched user data:", userData);
       if (userData?._id) {
+        console.log("Fetching performance for userId:", userData._id);
         fetchPerformance(userData._id);
+      } else {
+        console.log("No user ID found, stopping load");
+        setIsLoading(false);
+        setPerform([]);
       }
     };
     fetchData();
@@ -123,9 +156,11 @@ const UserPerformance = () => {
               Loading your performance data...
             </p>
           </div>
-        ) : perform && Object.keys(groupWorkoutsByDate(perform)).length > 0 ? (
+        ) : perform && perform.length > 0 && Object.keys(groupWorkoutsByDate(perform)).length > 0 ? (
           <div className="space-y-8">
-            {Object.entries(groupWorkoutsByDate(perform)).map(
+            {Object.entries(groupWorkoutsByDate(perform))
+              .sort(([dateA], [dateB]) => new Date(dateB) - new Date(dateA)) // Sort by date descending (latest first)
+              .map(
               ([date, exercises], index) => (
                 <div key={index} className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl overflow-hidden shadow-2xl border border-gray-700">
                   {/* Date header */}
@@ -145,7 +180,7 @@ const UserPerformance = () => {
 
                   {/* Exercises */}
                   <div className="p-8 space-y-8">
-                    {exercises.map((exercise, exIndex) => (
+                    {exercises.slice().reverse().map((exercise, exIndex) => (
                       <div key={exIndex} className="bg-black rounded-xl p-6 border border-gray-700 hover:border-gray-600 transition-colors">
                         <div className="flex items-center mb-6">
                           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-4">
@@ -186,7 +221,7 @@ const UserPerformance = () => {
 
                         {/* Exercise summary */}
                         <div className="mt-6 p-4 bg-gray-900 rounded-lg border border-gray-700">
-                          <div className="grid grid-cols-3 gap-4 text-center">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 text-center">
                             <div>
                               <div className="text-sm text-gray-400">Total Sets</div>
                               <div className="text-xl font-bold text-white">{exercise.sets.length}</div>
@@ -201,6 +236,18 @@ const UserPerformance = () => {
                               <div className="text-sm text-gray-400">Max Weight</div>
                               <div className="text-xl font-bold text-white">
                                 {Math.max(...exercise.sets.map(set => set.weight))} kg
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-gray-400">Duration</div>
+                              <div className="text-xl font-bold text-yellow-400">
+                                {exercise.duration ? `${Math.floor(exercise.duration / 60)}m ${exercise.duration % 60}s` : 'N/A'}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-gray-400">Calories</div>
+                              <div className="text-xl font-bold text-orange-400">
+                                {exercise.calories ? `${exercise.calories} kcal` : 'N/A'}
                               </div>
                             </div>
                           </div>

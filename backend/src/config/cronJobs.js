@@ -9,10 +9,11 @@ const startCronJobs = () => {
     console.log("Running daily stats update...");
     await updateDailyStats();
   });
+  
+  // Run once on startup
+  console.log("Running initial daily stats update...");
+  updateDailyStats().catch(err => console.error("Daily stats update failed:", err));
 };
 
 // module.exports = startCronJobs;
 export {startCronJobs}
-(async () => {
-    await updateDailyStats();
-  })()

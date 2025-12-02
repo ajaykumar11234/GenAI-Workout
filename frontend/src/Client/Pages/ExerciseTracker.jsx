@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from "react";
-import { Play, Square, RotateCcw, Activity, Target, Flame, Clock, Eye, Zap, Trophy, TrendingUp } from "lucide-react";
+import { Play, Square, RotateCcw, Activity, Target, Flame } from "lucide-react";
+import flaskAPI, { EXERCISES } from "../../services/flaskApi";
+import FormScoreDisplay from "../components/FormScoreDisplay";
 
-const EXERCISES = [
-  { id: "bicep_curl", name: "Bicep Curl", icon: "💪", color: "from-blue-500 to-purple-600" },
-  { id: "squat", name: "Squat", icon: "🦵", color: "from-green-500 to-teal-600" },
-  { id: "pushup", name: "Push-up", icon: "🤲", color: "from-red-500 to-pink-600" }
-];
-
-const BASE_URL = "http://localhost:5000";
+// Stats Card Component
+function StatCard({ title, value, icon, color }) {
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-5 text-center border border-gray-100 transform hover:scale-105 transition-all duration-300">
+      <div className="flex flex-col items-center gap-2">
+        <div className={`${color} bg-opacity-10 p-3 rounded-full`}>
+          <div className={color}>{icon}</div>
+        </div>
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">{title}</h3>
+        <p className={`text-3xl font-bold ${color}`}>{value}</p>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [exercise, setExercise] = useState(EXERCISES[0]);
@@ -17,20 +26,28 @@ function App() {
   const [error, setError] = useState('');
   const [workoutSummary, setWorkoutSummary] = useState(null);
 
+  // Check Flask server health on mount
+  useEffect(() => {
+    const checkServer = async () => {
+      const isHealthy = await flaskAPI.checkServerHealth();
+      if (!isHealthy) {
+        setError('Flask server is not running. Please start it on port 5000.');
+      }
+    };
+    checkServer();
+  }, []);
+
   // Fetch status periodically
   useEffect(() => {
     let interval;
     if (running) {
       interval = setInterval(async () => {
         try {
-          const response = await fetch(`${BASE_URL}/status`);
-          if (response.ok) {
-            const data = await response.json();
-            setStatus(data);
-            setError('');
-          }
+          const data = await flaskAPI.getStatus();
+          setStatus(data);
+          setError('');
         } catch (err) {
-          setError('Connection lost. Check if the server is running.');
+          setError(err.message);
           console.error('Status fetch error:', err);
         }
       }, 500);
@@ -42,19 +59,11 @@ function App() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${BASE_URL}/start/${exercise.id}`, {
-        method: 'POST',
-      });
-      
-      if (response.ok) {
-        setRunning(true);
-        setWorkoutSummary(null);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to start exercise');
-      }
+      await flaskAPI.startExercise(exercise.id);
+      setRunning(true);
+      setWorkoutSummary(null);
     } catch (err) {
-      setError('Cannot connect to server. Make sure it\'s running on port 5000.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -63,17 +72,14 @@ function App() {
   const stopExercise = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${BASE_URL}/stop`, {
-        method: 'POST',
-      });
+      const data = await flaskAPI.stopExercise();
+      setWorkoutSummary(data.summary);
+      setRunning(false);
       
-      if (response.ok) {
-        const data = await response.json();
-        setWorkoutSummary(data.summary);
-        setRunning(false);
-      }
+      // Performance data is now automatically saved by Flask to Node.js backend
+      console.log('Workout stopped. Data saved automatically by Flask.');
     } catch (err) {
-      setError('Error stopping exercise');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -82,17 +88,12 @@ function App() {
   const resetExercise = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${BASE_URL}/reset`, {
-        method: 'POST',
-      });
-      
-      if (response.ok) {
-        setStatus({});
-        setWorkoutSummary(null);
-        setError('');
-      }
+      await flaskAPI.resetExercise();
+      setStatus({});
+      setWorkoutSummary(null);
+      setError('');
     } catch (err) {
-      setError('Error resetting exercise');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -103,292 +104,232 @@ function App() {
     : 0;
 
   const getQualityColor = (score) => {
-    if (score >= 90) return 'text-green-400';
-    if (score >= 75) return 'text-yellow-400';
-    if (score >= 50) return 'text-orange-400';
-    return 'text-red-400';
-  };
-
-  const getFeedbackStyle = (feedback) => {
-    if (!feedback) return 'bg-gray-700 text-gray-300';
-    
-    if (feedback.includes('✅') || feedback.includes('🎉') || feedback.includes('🏆')) {
-      return 'bg-gradient-to-r from-green-600 to-green-500 text-white animate-pulse shadow-lg shadow-green-500/30';
-    }
-    if (feedback.includes('⏱️') || feedback.toLowerCase().includes('rest')) {
-      return 'bg-gradient-to-r from-blue-600 to-blue-500 text-white animate-pulse shadow-lg shadow-blue-500/30';
-    }
-    if (feedback.includes('🔥') || feedback.includes('💪') || feedback.includes('🚀')) {
-      return 'bg-gradient-to-r from-orange-600 to-red-500 text-white animate-bounce shadow-lg shadow-orange-500/30';
-    }
-    if (feedback.includes('⚠️') || feedback.includes('❌')) {
-      return 'bg-gradient-to-r from-red-600 to-pink-500 text-white shadow-lg shadow-red-500/30';
-    }
-    
-    return 'bg-gradient-to-r from-purple-600 to-indigo-500 text-white shadow-lg shadow-purple-500/30';
+    if (score >= 90) return 'text-green-500';
+    if (score >= 75) return 'text-yellow-500';
+    if (score >= 50) return 'text-orange-500';
+    return 'text-red-500';
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    <div className="min-h-screen h-screen overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
       {/* Header */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 shadow-2xl">
-        <div className="absolute inset-0 bg-black opacity-20"></div>
-        <div className="relative px-6 py-8">
-          <div className="flex items-center justify-center gap-3">
-            <Activity className="w-12 h-12 text-white animate-pulse" />
-            <h1 className="text-5xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-200">
-              AI Fitness Trainer
-            </h1>
-            <Trophy className="w-12 h-12 text-yellow-400 animate-bounce" />
+      <div className="bg-white shadow-lg border-b border-gray-200 flex-shrink-0">
+        <div className="w-full px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Activity className="w-6 h-6 text-indigo-600" />
+            </div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">AI Exercise Tracker</h1>
           </div>
-          <p className="text-center mt-2 text-gray-200 text-lg font-medium">
-            Your Personal AI Workout Companion
-          </p>
         </div>
       </div>
 
-      <div className="px-6 py-8">
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="w-full h-full px-4 py-4">
         {/* Error Display */}
         {error && (
-          <div className="max-w-4xl mx-auto mb-6 p-4 bg-red-900/50 border border-red-500 rounded-xl text-red-200 text-center animate-pulse">
-            ⚠️ {error}
+          <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 rounded-lg text-red-700 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚠️</span>
+              <span className="font-medium">{error}</span>
+            </div>
           </div>
         )}
 
         {/* Exercise Selection */}
-        <div className="max-w-4xl mx-auto mb-8">
-          <h2 className="text-2xl font-bold mb-4 text-center text-gray-200">Choose Your Exercise</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-lg p-4 mb-4 border border-gray-100">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span className="w-1 h-6 bg-indigo-600 rounded"></span>
+            Select Exercise
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
             {EXERCISES.map((ex) => (
               <button
                 key={ex.id}
                 onClick={() => setExercise(ex)}
                 disabled={running || loading}
-                className={`p-6 rounded-2xl font-bold text-lg transition-all duration-300 transform hover:scale-105 shadow-xl ${
+                className={`p-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
                   exercise.id === ex.id
-                    ? `bg-gradient-to-r ${ex.color} text-white shadow-2xl ring-4 ring-white/30`
-                    : 'bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white'
-                } ${(running || loading) ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-2xl'}`}
+                    ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-xl ring-2 ring-indigo-300'
+                    : 'bg-gradient-to-br from-gray-50 to-gray-100 text-gray-700 hover:shadow-lg border border-gray-200'
+                } ${(running || loading) ? 'opacity-50 cursor-not-allowed transform-none' : ''}`}
               >
-                <div className="text-4xl mb-2">{ex.icon}</div>
-                {ex.name}
+                <div className="text-3xl mb-2">{ex.icon}</div>
+                <div className="text-sm">{ex.name}</div>
               </button>
             ))}
           </div>
 
           {/* Control Buttons */}
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-3 justify-center">
             {!running ? (
               <button
                 onClick={startExercise}
                 disabled={loading}
-                className="flex items-center gap-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-2 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
-                <Play className="w-6 h-6" />
-                {loading ? 'Starting...' : 'Start Workout'}
+                <Play className="w-5 h-5" />
+                {loading ? 'Starting...' : 'Start'}
               </button>
             ) : (
               <button
                 onClick={stopExercise}
                 disabled={loading}
-                className="flex items-center gap-3 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-2 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
-                <Square className="w-6 h-6" />
-                {loading ? 'Stopping...' : 'Stop Workout'}
+                <Square className="w-5 h-5" />
+                {loading ? 'Stopping...' : 'Stop'}
               </button>
             )}
 
             <button
               onClick={resetExercise}
               disabled={running || loading}
-              className="flex items-center gap-3 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-2 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <RotateCcw className="w-6 h-6" />
+              <RotateCcw className="w-5 h-5" />
               {loading ? 'Resetting...' : 'Reset'}
             </button>
           </div>
         </div>
 
-        {/* Workout Summary */}
-        {workoutSummary && (
-          <div className="max-w-4xl mx-auto mb-8 p-6 bg-gradient-to-r from-green-900/50 to-blue-900/50 rounded-2xl border border-green-500/30 shadow-2xl">
-            <h3 className="text-2xl font-bold mb-4 text-center text-green-400">🎉 Workout Complete! 🎉</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div className="bg-black/30 rounded-xl p-4">
-                <p className="text-3xl font-bold text-green-400">{workoutSummary.total_reps}</p>
-                <p className="text-gray-300">Quality Reps</p>
+          {/* Workout Summary */}
+          {workoutSummary && (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4 mb-4 shadow-xl">
+              <h3 className="text-2xl font-bold text-center text-green-800 mb-4">🎉 Workout Complete! 🏆</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+              <div className="bg-white rounded-xl p-3 shadow-md border border-green-100">
+                <p className="text-3xl font-bold text-green-600 mb-1">{workoutSummary.total_reps || 0}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Reps</p>
               </div>
-              <div className="bg-black/30 rounded-xl p-4">
-                <p className="text-3xl font-bold text-yellow-400">{workoutSummary.best_quality}</p>
-                <p className="text-gray-300">Best Quality</p>
+              <div className="bg-white rounded-xl p-3 shadow-md border border-yellow-100">
+                <p className="text-3xl font-bold text-yellow-600 mb-1">{workoutSummary.best_quality || 0}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Best Quality</p>
               </div>
-              <div className="bg-black/30 rounded-xl p-4">
-                <p className="text-3xl font-bold text-red-400">{workoutSummary.calories}</p>
-                <p className="text-gray-300">Calories</p>
+              <div className="bg-white rounded-xl p-3 shadow-md border border-red-100">
+                <p className="text-3xl font-bold text-red-600 mb-1">{workoutSummary.calories || 0}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Calories</p>
               </div>
-              <div className="bg-black/30 rounded-xl p-4">
-                <p className="text-3xl font-bold text-blue-400">{Math.floor(workoutSummary.time / 60)}:{(workoutSummary.time % 60).toString().padStart(2, '0')}</p>
-                <p className="text-gray-300">Duration</p>
+              <div className="bg-white rounded-xl p-3 shadow-md border border-blue-100">
+                <p className="text-3xl font-bold text-blue-600 mb-1">
+                  {workoutSummary.duration ? `${Math.floor(workoutSummary.duration / 60)}:${(workoutSummary.duration % 60).toString().padStart(2, '0')}` : '0:00'}
+                </p>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Duration</p>
               </div>
             </div>
+            <p className="text-center text-green-700 font-medium mt-3">{workoutSummary.message}</p>
           </div>
         )}
 
-        {/* Main Dashboard */}
-        <div className="max-w-7xl mx-auto flex flex-col xl:flex-row gap-8">
-          {/* Video Feed */}
-          <div className="flex-1 bg-slate-800/50 backdrop-blur-sm rounded-3xl shadow-2xl p-6 border border-slate-700/50">
-            <h3 className="text-xl font-bold mb-4 text-center text-gray-200 flex items-center justify-center gap-2">
-              <Eye className="w-6 h-6" />
-              Live Camera Feed
-            </h3>
-            <div className="relative">
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-auto">
+            {/* Video Feed - Takes 2/3 width */}
+            <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+              <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="w-1 h-5 bg-indigo-600 rounded"></span>
+                Live Camera Feed
+              </h3>
               {running ? (
                 <img
-                  src={`${BASE_URL}/video_feed`}
+                  src={flaskAPI.getVideoFeedUrl()}
                   alt="Live Feed"
-                  className="w-full h-96 object-cover rounded-2xl border-4 border-slate-600 shadow-xl"
-                  onError={() => setError('Video feed unavailable. Check camera permissions.')}
-                />
+                  className="w-full h-[calc(100vh-280px)] object-cover rounded-xl border-2 border-indigo-200 shadow-inner"
+                onError={() => setError('Video feed unavailable. Check camera permissions.')}
+              />
               ) : (
-                <div className="w-full h-96 flex items-center justify-center text-gray-400 text-2xl rounded-2xl bg-slate-700/50 border-4 border-dashed border-slate-600">
-                  <div className="text-center">
-                    <Eye className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                    <p>Camera feed will appear here</p>
-                    <p className="text-lg text-gray-500 mt-2">Start a workout to begin</p>
+                <div className="w-full h-[calc(100vh-280px)] flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300">
+                <div className="text-center text-gray-400">
+                  <div className="bg-gray-200 p-4 rounded-full inline-block mb-3">
+                    <Activity className="w-12 h-12" />
                   </div>
+                  <p className="font-medium">Start workout to view camera</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Stats Dashboard */}
-          <div className="flex-1 flex flex-col gap-6">
-            {/* Enhanced Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <EnhancedStatCard 
-                title="Correct Reps" 
+          {/* Stats Panel - Takes 1/3 width */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 gap-3">
+              <StatCard 
+                title="Reps" 
                 value={status.reps || 0} 
-                icon={<Target className="w-8 h-8" />}
-                color="text-green-400"
-                bgGradient="from-green-500/20 to-emerald-500/20"
+                icon={<Target className="w-5 h-5" />}
+                color="text-green-600"
               />
-              <EnhancedStatCard 
+              <StatCard 
                 title="Sets" 
                 value={`${status.set || 0}/${status.total_sets || 0}`} 
-                icon={<TrendingUp className="w-8 h-8" />}
-                color="text-blue-400"
-                bgGradient="from-blue-500/20 to-cyan-500/20"
+                icon={<Activity className="w-5 h-5" />}
+                color="text-blue-600"
               />
-              <EnhancedStatCard 
+              {/* <StatCard 
                 title="Calories" 
                 value={status.calories || 0} 
-                icon={<Flame className="w-8 h-8" />}
-                color="text-red-400"
-                bgGradient="from-red-500/20 to-pink-500/20"
-              />
-              {/* <EnhancedStatCard 
-                title="Quality" 
-                value={`${status.quality_score || 0}/100`} 
-                icon={<Trophy className="w-8 h-8" />}
-                color={getQualityColor(status.quality_score || 0)}
-                bgGradient="from-yellow-500/20 to-orange-500/20"
-              /> */}
-              {/* <EnhancedStatCard 
-                title="Time" 
-                value={`${Math.floor((status.time || 0) / 60)}:${((status.time || 0) % 60).toString().padStart(2, '0')}`} 
-                icon={<Clock className="w-8 h-8" />}
-                color="text-purple-400"
-                bgGradient="from-purple-500/20 to-indigo-500/20"
-              /> */}
-              {/* <EnhancedStatCard 
-                title="FPS" 
-                value={status.fps || 0} 
-                icon={<Zap className="w-8 h-8" />}
-                color="text-yellow-400"
-                bgGradient="from-yellow-500/20 to-amber-500/20"
+                icon={<Flame className="w-5 h-5" />}
+                color="text-red-600"
               /> */}
             </div>
 
-            {/* Enhanced Progress Section */}
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-xl">
-              <h3 className="text-lg font-bold mb-4 text-center text-gray-200">Correct Reps Progress</h3>
-              
-              {/* Progress Bar */}
-              <div className="relative w-full bg-slate-700 rounded-2xl overflow-hidden h-8 shadow-inner mb-4">
+            {/* Progress */}
+            <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+              <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="w-1 h-5 bg-indigo-600 rounded"></span>
+                Progress
+              </h3>
+              <div className="relative w-full bg-gray-200 rounded-full h-8 overflow-hidden mb-3 shadow-inner">
                 <div
-                  className={`h-full bg-gradient-to-r ${exercise.color} transition-all duration-700 ease-out relative`}
+                  className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 transition-all duration-700 shadow-md"
                   style={{ width: `${progressPercent}%` }}
-                >
-                  <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                </div>
+                />
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="font-bold text-white drop-shadow-lg">
+                  <span className="text-sm font-bold text-gray-700 drop-shadow">
                     {Math.floor(progressPercent)}%
                   </span>
                 </div>
               </div>
-
-              {/* Rep Progress */}
-              <div className="flex justify-between text-sm text-gray-300 mb-4">
-                <span>✅ Correct: {status.reps || 0} reps</span>
-                <span>🎯 Target: {status.target_reps || 0} reps</span>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>{status.reps || 0} / {status.target_reps || 0} reps</span>
+                <span>Target: {status.target_reps || 0}</span>
               </div>
-
-              {/* Quality Note */}
-              <div className="text-center text-xs text-gray-400 mb-4 p-2 bg-slate-700/50 rounded-lg">
-                💡 Only reps with good form count towards your progress
-              </div>
-
-              {/* Quality Metrics */}
-              {status.consecutive_good_reps > 0 && (
-                <div className="flex justify-between text-sm text-gray-300 mb-2">
-                  <span>🔥 Streak: {status.consecutive_good_reps} good reps</span>
-                  <span>📊 Total Good: {status.total_good_reps}</span>
-                </div>
-              )}
             </div>
 
-            {/* Enhanced Feedback Section */}
-            <div className={`p-6 rounded-2xl text-center font-bold text-lg transition-all duration-500 shadow-2xl border ${getFeedbackStyle(status.feedback)}`}>
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Activity className="w-6 h-6 animate-pulse" />
-                <span>Coach Feedback</span>
-                <Activity className="w-6 h-6 animate-pulse" />
-              </div>
-              <p className="text-xl leading-relaxed">
-                {status.feedback || "Get ready to start your workout! 💪"}
+            {/* Feedback */}
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-4 shadow-md">
+              <h3 className="text-lg font-bold text-indigo-900 mb-2 flex items-center gap-2">
+                <span className="w-1 h-5 bg-indigo-600 rounded"></span>
+                Real-time Feedback
+              </h3>
+              <p className="text-indigo-800 font-medium text-base">
+                {status.feedback || "Ready to start!"}
               </p>
             </div>
 
-            {/* Form Issues Alert */}
+            {/* Form Issues */}
             {status.form_issues && status.form_issues.length > 0 && (
-              <div className="bg-red-900/50 border border-red-500 rounded-2xl p-4 shadow-xl">
-                <h4 className="font-bold text-red-400 mb-2 flex items-center gap-2">
-                  ⚠️ Form Issues Detected
+              <div className="bg-red-50 border-l-4 border-red-500 rounded-xl p-4 shadow-md">
+                <h4 className="font-bold text-red-800 mb-3 flex items-center gap-2">
+                  <span className="text-xl">⚠️</span>
+                  Form Issues
                 </h4>
-                <ul className="list-disc list-inside text-red-200 space-y-1">
+                <ul className="list-disc list-inside text-red-700 text-sm space-y-1">
                   {status.form_issues.map((issue, index) => (
-                    <li key={index} className="text-sm">{issue}</li>
+                    <li key={index}>{issue}</li>
                   ))}
                 </ul>
               </div>
             )}
+
+            {/* Real-time Form Analysis */}
+            {running && status && (
+              <FormScoreDisplay formData={status} />
+            )}
           </div>
         </div>
+        </div>
       </div>
-    </div>
-  );
-}
-
-function EnhancedStatCard({ title, value, icon, color, bgGradient }) {
-  return (
-    <div className={`bg-gradient-to-br ${bgGradient} backdrop-blur-sm rounded-2xl shadow-xl p-4 text-center border border-white/10 transition-all duration-300 hover:scale-105 hover:shadow-2xl`}>
-      <div className="flex items-center justify-center gap-2 mb-2">
-        <div className={color}>{icon}</div>
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">{title}</h3>
-      </div>
-      <p className={`text-3xl font-bold ${color} drop-shadow-lg`}>{value}</p>
     </div>
   );
 }

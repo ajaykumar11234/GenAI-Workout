@@ -16,25 +16,36 @@ const dietSchema = new mongoose.Schema({
     },
     dailyDiet: [
         {
-        typeOfMeal:{type:String,required:true},
-        FoodItems: [
-            {
-                foodName: {
-                    type: String, // Name of the food item
-                    required: true
-                },
-                quantity: {
-                    type: String, // e.g., '1 cup', '200 grams', etc.
-                    required: true
-                },
-                calories: {
-                    type: Number, // Caloric value of the food item
-                    required: true
+            day: {
+                type: String, // e.g., Monday, Tuesday, etc.
+                required: true
+            },
+            meals: [
+                {
+                    typeOfMeal: {
+                        type: String, // e.g., Breakfast, Lunch, Dinner, Snack
+                        required: true
+                    },
+                    FoodItems: [
+                        {
+                            foodName: {
+                                type: String, // Name of the food item
+                                required: true
+                            },
+                            quantity: {
+                                type: String, // e.g., '1 cup', '200 grams', etc.
+                                required: true
+                            },
+                            calories: {
+                                type: Number, // Caloric value of the food item
+                                required: true
+                            }
+                        }
+                    ]
                 }
-            }
-        ],
-    }
-]
+            ]
+        }
+    ]
        
        
     ,
