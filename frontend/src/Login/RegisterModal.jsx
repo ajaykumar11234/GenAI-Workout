@@ -3,8 +3,7 @@ import { X, ChevronDown } from "lucide-react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import config from "../config/config";
-const url=import.meta.env.VITE_BACKEND_URL
-console.log(url);
+
 const RegisterModal = ({ closeModal }) => {
   const navigate = useNavigate();
   const [selectedCountry, setSelectedCountry] = useState({
@@ -22,6 +21,7 @@ const RegisterModal = ({ closeModal }) => {
     gender: "", // Gender is initialized but needs to be set on submit
   });
   const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const countries = [
     { code: "+1", flag: "🇺🇸", name: "United States" },
@@ -61,6 +61,7 @@ const RegisterModal = ({ closeModal }) => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    setIsLoading(true);
     // Assign selected gender to formdata before sending
     const updatedFormdata = {
       ...formdata,
@@ -83,7 +84,11 @@ const RegisterModal = ({ closeModal }) => {
       
       }
     } catch (error) {
-      setError(error.response?.data?.message || "Registration failed.");
+      console.error('Registration failed:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || "Registration failed. Please try again.";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -220,9 +225,20 @@ const RegisterModal = ({ closeModal }) => {
         {/* Submit Button */}
         <button
           type="submit"
-          className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-700 text-white rounded-md hover:opacity-90 focus:ring-2 focus:ring-indigo-500 transition-all transform hover:scale-105"
+          disabled={isLoading}
+          className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-700 text-white rounded-md hover:opacity-90 focus:ring-2 focus:ring-indigo-500 transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
         >
-          Create Account
+          {isLoading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Creating Account...
+            </>
+          ) : (
+            'Create Account'
+          )}
         </button>
       </form>
     </div>

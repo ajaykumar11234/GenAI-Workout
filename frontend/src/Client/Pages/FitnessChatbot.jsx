@@ -35,7 +35,7 @@ const FitnessChatbot = () => {
 
     try {
       const response = await axios.post(
-        `http://localhost:4000/api/v1/fitness-chat`,
+        `${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/v1/fitness-chat`,
         { message: userMessage },
         {
           headers: {
