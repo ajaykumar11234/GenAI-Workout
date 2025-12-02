@@ -21,7 +21,9 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",         // Local frontend
+      "http://localhost:5173", 
+      "https://genai-workout-frontend.onrender.com",
+              // Local frontend
       "http://192.168.1.14:5173",      // Network frontend
       "https://workout2-korh.onrender.com" // Production client
     ],
